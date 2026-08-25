@@ -101,8 +101,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             loginTime: Date.now(),
           });
           return { success: true };
-        } catch (firebaseErr: unknown) {
-          console.warn('Firebase Auth sign in failed, testing local admin master hash:', firebaseErr);
+        } catch {
+          // Fallback to local admin master hash
         }
       }
 

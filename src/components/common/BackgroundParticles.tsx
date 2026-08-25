@@ -24,45 +24,45 @@ export const BackgroundParticles: React.FC = () => {
     switch (settings.themePreset) {
       case 'rose-gold':
         return {
-          orb1: 'bg-rose-300/35 dark:bg-rose-900/30',
-          orb2: 'bg-pink-300/35 dark:bg-pink-900/25',
-          orb3: 'bg-amber-200/30 dark:bg-amber-900/20',
-          orb4: 'bg-orange-200/25 dark:bg-orange-900/20',
+          orb1: 'bg-rose-500/25',
+          orb2: 'bg-pink-500/20',
+          orb3: 'bg-amber-400/15',
+          orb4: 'bg-rose-400/20',
         };
       case 'soft-peach':
         return {
-          orb1: 'bg-orange-300/35 dark:bg-orange-900/30',
-          orb2: 'bg-amber-300/35 dark:bg-amber-900/25',
-          orb3: 'bg-rose-200/30 dark:bg-rose-900/20',
-          orb4: 'bg-yellow-200/30 dark:bg-yellow-900/20',
+          orb1: 'bg-orange-500/25',
+          orb2: 'bg-amber-500/20',
+          orb3: 'bg-rose-400/15',
+          orb4: 'bg-yellow-400/20',
         };
       case 'lavender':
         return {
-          orb1: 'bg-purple-300/35 dark:bg-purple-900/30',
-          orb2: 'bg-indigo-300/35 dark:bg-indigo-900/25',
-          orb3: 'bg-pink-200/30 dark:bg-pink-900/20',
-          orb4: 'bg-violet-200/30 dark:bg-violet-900/20',
+          orb1: 'bg-purple-500/25',
+          orb2: 'bg-indigo-500/20',
+          orb3: 'bg-pink-500/15',
+          orb4: 'bg-violet-400/20',
         };
       case 'sage-green':
         return {
-          orb1: 'bg-emerald-300/35 dark:bg-emerald-900/30',
-          orb2: 'bg-teal-300/35 dark:bg-teal-900/25',
-          orb3: 'bg-green-200/30 dark:bg-green-900/20',
-          orb4: 'bg-lime-200/25 dark:bg-lime-900/20',
+          orb1: 'bg-emerald-500/25',
+          orb2: 'bg-teal-500/20',
+          orb3: 'bg-green-400/15',
+          orb4: 'bg-lime-400/20',
         };
       case 'starry-dusk':
         return {
-          orb1: 'bg-indigo-600/25 dark:bg-indigo-800/35',
-          orb2: 'bg-purple-600/25 dark:bg-purple-900/30',
-          orb3: 'bg-blue-600/20 dark:bg-blue-900/30',
-          orb4: 'bg-amber-500/15 dark:bg-amber-400/15',
+          orb1: 'bg-indigo-500/30',
+          orb2: 'bg-purple-500/25',
+          orb3: 'bg-blue-500/20',
+          orb4: 'bg-amber-400/15',
         };
       default: // warm-amber
         return {
-          orb1: 'bg-amber-300/40 dark:bg-amber-900/30',
-          orb2: 'bg-orange-300/35 dark:bg-orange-900/25',
-          orb3: 'bg-rose-200/30 dark:bg-rose-900/20',
-          orb4: 'bg-yellow-300/30 dark:bg-yellow-900/20',
+          orb1: 'bg-amber-500/25',
+          orb2: 'bg-orange-500/20',
+          orb3: 'bg-rose-500/15',
+          orb4: 'bg-yellow-500/20',
         };
     }
   };

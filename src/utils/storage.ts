@@ -63,8 +63,7 @@ export async function saveMediaBlob(id: string, blob: Blob, type: 'image' | 'vid
 
     // Return object URL for instant rendering
     return URL.createObjectURL(blob);
-  } catch (error) {
-    console.warn('Failed to save to IndexedDB, fallback to Data URL', error);
+  } catch {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
@@ -89,8 +88,7 @@ export async function getMediaBlobUrl(id: string): Promise<string | null> {
       return URL.createObjectURL(record.blob);
     }
     return null;
-  } catch (error) {
-    console.warn('Could not retrieve media blob from IndexedDB', error);
+  } catch {
     return null;
   }
 }
@@ -106,8 +104,8 @@ export async function deleteMediaBlob(id: string): Promise<void> {
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
-  } catch (error) {
-    console.warn('Error deleting media blob from IndexedDB', error);
+  } catch {
+    // Media blob deletion completed or non-existent
   }
 }
 
@@ -121,7 +119,7 @@ export async function clearAllLocalMedia(): Promise<void> {
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
-  } catch (error) {
-    console.warn('Error clearing local media', error);
+  } catch {
+    // Clear local media done
   }
 }

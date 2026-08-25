@@ -20,6 +20,7 @@ interface MusicContextType {
   isPlayerVisible: boolean;
   hasUserInteracted: boolean;
   autoplayBlocked: boolean;
+  showFooterNowPlaying: boolean;
   playSong: (song: SongItem) => void;
   togglePlay: () => void;
   pause: () => void;
@@ -29,6 +30,8 @@ interface MusicContextType {
   setVolumeLevel: (vol: number) => void;
   toggleMute: () => void;
   togglePlayerVisible: () => void;
+  toggleFooterNowPlaying: () => void;
+  setShowFooterNowPlaying: (show: boolean) => void;
   refreshSongs: () => Promise<void>;
   startMusicWithUserInteraction: () => void;
 }
@@ -46,6 +49,35 @@ export const MusicProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isPlayerVisible, setIsPlayerVisible] = useState(true);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [showFooterNowPlaying, setShowFooterNowPlayingState] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('martha_footer_now_playing');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleFooterNowPlaying = () => {
+    setShowFooterNowPlayingState((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('martha_footer_now_playing', String(next));
+      } catch {
+        // Local storage ignore
+      }
+      return next;
+    });
+  };
+
+  const setShowFooterNowPlaying = (show: boolean) => {
+    setShowFooterNowPlayingState(show);
+    try {
+      localStorage.setItem('martha_footer_now_playing', String(show));
+    } catch {
+      // Local storage ignore
+    }
+  };
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const synthAudioRef = useRef<AudioContext | null>(null);
@@ -224,6 +256,7 @@ export const MusicProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         isPlayerVisible,
         hasUserInteracted,
         autoplayBlocked,
+        showFooterNowPlaying,
         playSong,
         togglePlay,
         pause,
@@ -233,6 +266,8 @@ export const MusicProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setVolumeLevel,
         toggleMute,
         togglePlayerVisible,
+        toggleFooterNowPlaying,
+        setShowFooterNowPlaying,
         refreshSongs,
         startMusicWithUserInteraction,
       }}

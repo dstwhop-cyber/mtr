@@ -10,8 +10,8 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #fdfbf7;
-    color: #292524;
+    background-color: #121019;
+    color: #f5f5f4;
     overflow-x: hidden;
     min-height: 100vh;
   }

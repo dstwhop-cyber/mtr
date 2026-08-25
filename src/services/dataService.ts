@@ -41,6 +41,43 @@ const LS_MEMORIES = 'for_martha_memories';
 const LS_ALBUMS = 'for_martha_albums';
 const LS_SETTINGS = 'for_martha_settings';
 
+// Offline circuit breaker to prevent repeated failed network requests and log flooding
+let isFirestoreTemporarilyOffline = false;
+let lastOfflineCheck = 0;
+const OFFLINE_RETRY_COOLDOWN = 30000; // 30 seconds cooldown before retrying cloud if offline
+
+function shouldTryFirestore(): boolean {
+  if (!isFirestoreTemporarilyOffline) return true;
+  if (Date.now() - lastOfflineCheck > OFFLINE_RETRY_COOLDOWN) {
+    isFirestoreTemporarilyOffline = false;
+    return true;
+  }
+  return false;
+}
+
+function markFirestoreOffline(): void {
+  isFirestoreTemporarilyOffline = true;
+  lastOfflineCheck = Date.now();
+}
+
+async function withFirestoreTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Firestore timeout'));
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch (err) {
+    clearTimeout(timeoutId!);
+    throw err;
+  }
+}
+
 export class DataService {
   private static async getLocalItem<T>(key: string, defaultVal: T): Promise<T> {
     try {
@@ -55,8 +92,8 @@ export class DataService {
   private static setLocalItem<T>(key: string, value: T): void {
     try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.warn('LocalStorage save warning:', e);
+    } catch {
+      // Ignore quota/storage restrictions gracefully
     }
   }
 
@@ -80,14 +117,14 @@ export class DataService {
   // --- SETTINGS & CONFIG ---
   static async getSettings(): Promise<AppSettings> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const docSnap = await getDoc(doc(db, 'settings', 'global'));
-        if (docSnap.exists()) {
+        const docSnap = await withFirestoreTimeout(getDoc(doc(db, 'settings', 'global')), 1500);
+        if (docSnap && docSnap.exists()) {
           return this.sanitizeSettings({ ...DEFAULT_SETTINGS, ...docSnap.data() } as AppSettings);
         }
-      } catch (err) {
-        console.warn('Firestore settings fetch notice, using local/cached:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -116,11 +153,11 @@ export class DataService {
     };
 
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await setDoc(doc(db, 'settings', 'global'), updated, { merge: true });
-      } catch (err) {
-        console.warn('Firestore settings save notice:', err);
+        await withFirestoreTimeout(setDoc(doc(db, 'settings', 'global'), updated, { merge: true }), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -131,9 +168,9 @@ export class DataService {
   // --- PHOTOS ---
   static async getPhotos(): Promise<PhotoItem[]> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const querySnapshot = await getDocs(collection(db, 'photos'));
+        const querySnapshot = await withFirestoreTimeout(getDocs(collection(db, 'photos')), 1500);
         const list: PhotoItem[] = [];
         querySnapshot.forEach((d) => {
           const data = d.data() as PhotoItem;
@@ -146,8 +183,8 @@ export class DataService {
           this.setLocalItem(LS_PHOTOS, list);
           return list;
         }
-      } catch (err) {
-        console.warn('Firestore photos fetch notice, falling back to local:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -180,11 +217,11 @@ export class DataService {
     };
 
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await setDoc(doc(db, 'photos', id), newPhoto);
-      } catch (err) {
-        console.warn('Firestore save photo notice:', err);
+        await withFirestoreTimeout(setDoc(doc(db, 'photos', id), newPhoto), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -198,11 +235,11 @@ export class DataService {
 
   static async updatePhoto(id: string, updates: Partial<PhotoItem>): Promise<void> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await updateDoc(doc(db, 'photos', id), updates);
-      } catch (err) {
-        console.warn('Firestore update photo notice:', err);
+        await withFirestoreTimeout(updateDoc(doc(db, 'photos', id), updates), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -214,11 +251,11 @@ export class DataService {
 
   static async deletePhoto(id: string): Promise<boolean> {
     const { db, storage, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await deleteDoc(doc(db, 'photos', id));
-      } catch (err) {
-        console.warn('Firestore delete photo notice:', err);
+        await withFirestoreTimeout(deleteDoc(doc(db, 'photos', id)), 2000);
+      } catch {
+        markFirestoreOffline();
       }
       if (storage) {
         try {
@@ -241,9 +278,9 @@ export class DataService {
   // --- VIDEOS ---
   static async getVideos(): Promise<VideoItem[]> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const querySnapshot = await getDocs(collection(db, 'videos'));
+        const querySnapshot = await withFirestoreTimeout(getDocs(collection(db, 'videos')), 1500);
         const list: VideoItem[] = [];
         querySnapshot.forEach((d) => {
           const data = d.data() as VideoItem;
@@ -256,28 +293,37 @@ export class DataService {
           this.setLocalItem(LS_VIDEOS, list);
           return list;
         }
-      } catch (err) {
-        console.warn('Firestore videos fetch notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const stored = await this.getLocalItem<VideoItem[]>(LS_VIDEOS, INITIAL_VIDEOS);
     const cleaned = this.filterOutDemos(stored);
+    
+    // Refresh any IndexedDB blob URLs if needed
     for (const vid of cleaned) {
       if (vid.url && vid.url.startsWith('indexeddb://')) {
         const id = vid.url.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) vid.url = blobUrl;
       }
+      if (vid.thumbnailUrl && vid.thumbnailUrl.startsWith('indexeddb://')) {
+        const thumbId = vid.thumbnailUrl.replace('indexeddb://', '');
+        const thumbBlob = await getMediaBlobUrl(thumbId);
+        if (thumbBlob) vid.thumbnailUrl = thumbBlob;
+      }
     }
+    
     if (cleaned.length !== stored.length) {
       this.setLocalItem(LS_VIDEOS, cleaned);
     }
+    
     return cleaned.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   static async addVideo(video: Omit<VideoItem, 'id' | 'createdAt'>): Promise<VideoItem> {
-    const id = 'video_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const newVideo: VideoItem = {
       ...video,
       id,
@@ -286,11 +332,11 @@ export class DataService {
     };
 
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await setDoc(doc(db, 'videos', id), newVideo);
-      } catch (err) {
-        console.warn('Firestore add video notice:', err);
+        await withFirestoreTimeout(setDoc(doc(db, 'videos', id), newVideo), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -303,12 +349,20 @@ export class DataService {
   }
 
   static async deleteVideo(id: string): Promise<boolean> {
-    const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    const { db, storage, isConfigured } = getFirebaseInstances();
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await deleteDoc(doc(db, 'videos', id));
-      } catch (err) {
-        console.warn('Firestore delete video notice:', err);
+        await withFirestoreTimeout(deleteDoc(doc(db, 'videos', id)), 2000);
+      } catch {
+        markFirestoreOffline();
+      }
+      if (storage) {
+        try {
+          const fileRef = ref(storage, `videos/${id}`);
+          await deleteObject(fileRef).catch(() => {});
+        } catch {
+          // Storage cleanup ignore
+        }
       }
     }
 
@@ -320,12 +374,12 @@ export class DataService {
     return true;
   }
 
-  // --- SONGS / MUSIC ---
+  // --- SONGS ---
   static async getSongs(): Promise<SongItem[]> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const querySnapshot = await getDocs(collection(db, 'songs'));
+        const querySnapshot = await withFirestoreTimeout(getDocs(collection(db, 'songs')), 1500);
         const list: SongItem[] = [];
         querySnapshot.forEach((d) => {
           const data = d.data() as SongItem;
@@ -334,48 +388,58 @@ export class DataService {
           }
         });
         if (list.length > 0) {
-          list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          list.sort((a, b) => (a.order || 0) - (b.order || 0));
           this.setLocalItem(LS_SONGS, list);
           return list;
         }
-      } catch (err) {
-        console.warn('Firestore songs fetch notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const stored = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
     const cleaned = this.filterOutDemos(stored);
+    
+    // Refresh any IndexedDB blob URLs if needed
     for (const song of cleaned) {
       if (song.url && song.url.startsWith('indexeddb://')) {
         const id = song.url.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) song.url = blobUrl;
       }
+      if (song.coverUrl && song.coverUrl.startsWith('indexeddb://')) {
+        const coverId = song.coverUrl.replace('indexeddb://', '');
+        const coverBlob = await getMediaBlobUrl(coverId);
+        if (coverBlob) song.coverUrl = coverBlob;
+      }
     }
+    
     if (cleaned.length !== stored.length) {
       this.setLocalItem(LS_SONGS, cleaned);
     }
-    return cleaned.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    
+    return cleaned.sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   static async addSong(song: Omit<SongItem, 'id' | 'createdAt'>): Promise<SongItem> {
     const id = 'song_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const current = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
     const cleaned = this.filterOutDemos(current);
+
     const newSong: SongItem = {
       ...song,
       id,
-      order: song.order ?? cleaned.length,
       isDemo: false,
+      order: song.order ?? cleaned.length,
       createdAt: Date.now(),
     };
 
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await setDoc(doc(db, 'songs', id), newSong);
-      } catch (err) {
-        console.warn('Firestore add song notice:', err);
+        await withFirestoreTimeout(setDoc(doc(db, 'songs', id), newSong), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -387,44 +451,52 @@ export class DataService {
 
   static async updateSong(id: string, updates: Partial<SongItem>): Promise<void> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await updateDoc(doc(db, 'songs', id), updates);
-      } catch (err) {
-        console.warn('Firestore update song notice:', err);
+        await withFirestoreTimeout(updateDoc(doc(db, 'songs', id), updates), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const current = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
-    const updated = current.map((s) => (s.id === id ? { ...s, ...updates } : s));
+    const updated = current.map((item) => (item.id === id ? { ...item, ...updates } : item));
     this.setLocalItem(LS_SONGS, updated);
     await this.touchUpdated();
   }
 
   static async deleteSong(id: string): Promise<boolean> {
-    const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    const { db, storage, isConfigured } = getFirebaseInstances();
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await deleteDoc(doc(db, 'songs', id));
-      } catch (err) {
-        console.warn('Firestore delete song notice:', err);
+        await withFirestoreTimeout(deleteDoc(doc(db, 'songs', id)), 2000);
+      } catch {
+        markFirestoreOffline();
+      }
+      if (storage) {
+        try {
+          const fileRef = ref(storage, `songs/${id}`);
+          await deleteObject(fileRef).catch(() => {});
+        } catch {
+          // Storage ignore
+        }
       }
     }
 
     await deleteMediaBlob(id);
     const current = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
-    const updated = current.filter((s) => s.id !== id);
+    const updated = current.filter((item) => item.id !== id);
     this.setLocalItem(LS_SONGS, updated);
     await this.touchUpdated();
     return true;
   }
 
-  // --- MEMORIES / TIMELINE ---
+  // --- MEMORIES ---
   static async getMemories(): Promise<MemoryItem[]> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const querySnapshot = await getDocs(collection(db, 'memories'));
+        const querySnapshot = await withFirestoreTimeout(getDocs(collection(db, 'memories')), 1500);
         const list: MemoryItem[] = [];
         querySnapshot.forEach((d) => {
           const data = d.data() as MemoryItem;
@@ -437,13 +509,15 @@ export class DataService {
           this.setLocalItem(LS_MEMORIES, list);
           return list;
         }
-      } catch (err) {
-        console.warn('Firestore memories fetch notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const stored = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
     const cleaned = this.filterOutDemos(stored);
+    
+    // Refresh any IndexedDB blob URLs if needed
     for (const mem of cleaned) {
       if (mem.photoUrl && mem.photoUrl.startsWith('indexeddb://')) {
         const id = mem.photoUrl.replace('indexeddb://', '');
@@ -451,15 +525,17 @@ export class DataService {
         if (blobUrl) mem.photoUrl = blobUrl;
       }
     }
+    
     if (cleaned.length !== stored.length) {
       this.setLocalItem(LS_MEMORIES, cleaned);
     }
+    
     return cleaned.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   static async addMemory(memory: Omit<MemoryItem, 'id' | 'createdAt'>): Promise<MemoryItem> {
-    const id = 'memory_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-    const newMemory: MemoryItem = {
+    const id = 'mem_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const newMem: MemoryItem = {
       ...memory,
       id,
       isDemo: false,
@@ -467,45 +543,45 @@ export class DataService {
     };
 
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await setDoc(doc(db, 'memories', id), newMemory);
-      } catch (err) {
-        console.warn('Firestore add memory notice:', err);
+        await withFirestoreTimeout(setDoc(doc(db, 'memories', id), newMem), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const current = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
     const cleaned = this.filterOutDemos(current);
-    const updated = [newMemory, ...cleaned];
+    const updated = [newMem, ...cleaned];
     this.setLocalItem(LS_MEMORIES, updated);
     await this.touchUpdated();
-    return newMemory;
+    return newMem;
   }
 
   static async updateMemory(id: string, updates: Partial<MemoryItem>): Promise<void> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await updateDoc(doc(db, 'memories', id), updates);
-      } catch (err) {
-        console.warn('Firestore update memory notice:', err);
+        await withFirestoreTimeout(updateDoc(doc(db, 'memories', id), updates), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
     const current = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
-    const updated = current.map((m) => (m.id === id ? { ...m, ...updates } : m));
+    const updated = current.map((item) => (item.id === id ? { ...item, ...updates } : item));
     this.setLocalItem(LS_MEMORIES, updated);
     await this.touchUpdated();
   }
 
   static async deleteMemory(id: string): Promise<boolean> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        await deleteDoc(doc(db, 'memories', id));
-      } catch (err) {
-        console.warn('Firestore delete memory notice:', err);
+        await withFirestoreTimeout(deleteDoc(doc(db, 'memories', id)), 2000);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -519,14 +595,14 @@ export class DataService {
   // --- ALBUMS ---
   static async getAlbums(): Promise<AlbumItem[]> {
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
-        const querySnapshot = await getDocs(collection(db, 'albums'));
+        const querySnapshot = await withFirestoreTimeout(getDocs(collection(db, 'albums')), 1500);
         const list: AlbumItem[] = [];
         querySnapshot.forEach((d) => list.push({ ...d.data(), id: d.id } as AlbumItem));
         if (list.length > 0) return list;
-      } catch (err) {
-        console.warn('Firestore albums fetch notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
     return this.getLocalItem<AlbumItem[]>(LS_ALBUMS, INITIAL_ALBUMS);
@@ -535,13 +611,13 @@ export class DataService {
   static async saveAlbums(albums: AlbumItem[]): Promise<void> {
     this.setLocalItem(LS_ALBUMS, albums);
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
         for (const alb of albums) {
           await setDoc(doc(db, 'albums', alb.id), alb, { merge: true });
         }
-      } catch (err) {
-        console.warn('Firestore save albums notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
   }
@@ -572,7 +648,6 @@ export class DataService {
               }
             },
             (error) => {
-              console.warn('Firebase Storage upload error, falling back to persistent local storage:', error);
               reject(error);
             },
             async () => {
@@ -586,8 +661,8 @@ export class DataService {
             }
           );
         });
-      } catch (err) {
-        console.warn('Using IndexedDB fallback for media storage due to Firebase Storage exception:', err);
+      } catch {
+        // Seamless fallback to IndexedDB
       }
     }
 
@@ -619,7 +694,7 @@ export class DataService {
 
     // Also purge demo docs from Firestore if configured
     const { db, isConfigured } = getFirebaseInstances();
-    if (isConfigured && db) {
+    if (isConfigured && db && shouldTryFirestore()) {
       try {
         const demoIds = [
           'demo-photo-1', 'demo-photo-2', 'demo-photo-3', 'demo-photo-4', 'demo-photo-5', 'demo-photo-6',
@@ -633,8 +708,8 @@ export class DataService {
           await deleteDoc(doc(db, 'songs', id)).catch(() => {});
           await deleteDoc(doc(db, 'memories', id)).catch(() => {});
         }
-      } catch (err) {
-        console.warn('Firestore demo cleanup notice:', err);
+      } catch {
+        markFirestoreOffline();
       }
     }
 
@@ -665,8 +740,7 @@ export class DataService {
       if (data.settings) this.setLocalItem(LS_SETTINGS, data.settings);
       await this.touchUpdated();
       return true;
-    } catch (e) {
-      console.error('Import error:', e);
+    } catch {
       return false;
     }
   }
