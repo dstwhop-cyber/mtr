@@ -65,6 +65,18 @@ export class DataService {
     return items.filter((item) => !item.isDemo && !item.id?.startsWith('demo-'));
   }
 
+  private static sanitizeSettings(s: AppSettings): AppSettings {
+    const removeHearts = (str?: string) => (str ? str.replace(/[❤️💖💕💗💓💘💝💟❣️]/g, '').trim() : str);
+    return {
+      ...s,
+      siteTitle: removeHearts(s.siteTitle) || 'For Martha',
+      marthaGreeting: removeHearts(s.marthaGreeting) || 'Hi Martha',
+      marthaSubtext: removeHearts(s.marthaSubtext) || s.marthaSubtext,
+      surpriseTitle: removeHearts(s.surpriseTitle) || s.surpriseTitle,
+      surpriseMessage: removeHearts(s.surpriseMessage) || s.surpriseMessage,
+    };
+  }
+
   // --- SETTINGS & CONFIG ---
   static async getSettings(): Promise<AppSettings> {
     const { db, isConfigured } = getFirebaseInstances();
@@ -72,7 +84,7 @@ export class DataService {
       try {
         const docSnap = await getDoc(doc(db, 'settings', 'global'));
         if (docSnap.exists()) {
-          return { ...DEFAULT_SETTINGS, ...docSnap.data() } as AppSettings;
+          return this.sanitizeSettings({ ...DEFAULT_SETTINGS, ...docSnap.data() } as AppSettings);
         }
       } catch (err) {
         console.warn('Firestore settings fetch notice, using local/cached:', err);
@@ -88,7 +100,11 @@ export class DataService {
       localSettings.ownerPasswordHash = ownerHash;
       this.setLocalItem(LS_SETTINGS, localSettings);
     }
-    return localSettings;
+    const cleanSettings = this.sanitizeSettings(localSettings);
+    if (cleanSettings.siteTitle !== localSettings.siteTitle || cleanSettings.marthaGreeting !== localSettings.marthaGreeting) {
+      this.setLocalItem(LS_SETTINGS, cleanSettings);
+    }
+    return cleanSettings;
   }
 
   static async saveSettings(settings: Partial<AppSettings>): Promise<AppSettings> {

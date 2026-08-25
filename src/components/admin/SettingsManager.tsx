@@ -35,11 +35,11 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
   const { isConfigured } = getFirebaseInstances();
 
   // General texts state
-  const [siteTitle, setSiteTitle] = useState(settings.siteTitle || 'For Martha ❤️');
+  const [siteTitle, setSiteTitle] = useState(settings.siteTitle || 'For Martha');
   const [siteSubtitle, setSiteSubtitle] = useState(
     settings.siteSubtitle || 'A little place filled with memories, music, and moments.'
   );
-  const [marthaGreeting, setMarthaGreeting] = useState(settings.marthaGreeting || 'Hi Martha ❤️');
+  const [marthaGreeting, setMarthaGreeting] = useState(settings.marthaGreeting || 'Hi Martha');
   const [marthaSubtext, setMarthaSubtext] = useState(
     settings.marthaSubtext || 'I made a little corner of the internet just for you.'
   );

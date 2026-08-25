@@ -49,7 +49,7 @@ export const MarthaHero: React.FC<MarthaHeroProps> = ({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
         <div className="space-y-2">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-stone-900 dark:text-stone-100 tracking-tight flex items-center gap-3">
-            {settings.marthaGreeting || 'Hi Martha'} <span className="text-rose-500 inline-block animate-pulse">❤️</span>
+            {settings.marthaGreeting || 'Hi Martha'}
           </h1>
           <p className="text-lg sm:text-xl text-stone-500 dark:text-stone-400 font-serif italic max-w-xl">
             {settings.marthaSubtext || 'I made a little corner of the internet just for you.'}

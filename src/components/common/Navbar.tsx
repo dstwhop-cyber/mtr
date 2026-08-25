@@ -35,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigateSection }) => {
           onClick={() => scrollTo('hero')}
         >
           <span className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-rose-500 flex items-center gap-1.5">
-            For Martha <span className="text-xl inline-block transform group-hover:scale-110 transition-transform">❤️</span>
+            For Martha
           </span>
           {isOwner && (
             <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-semibold flex items-center gap-1 border border-amber-300/40">

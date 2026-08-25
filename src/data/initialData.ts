@@ -21,9 +21,9 @@ export const INITIAL_MEMORIES: MemoryItem[] = [];
 // Owner default password: "admin"
 // (Also easily change-able anytime from Settings tab in Owner Dashboard)
 export const DEFAULT_SETTINGS: AppSettings = {
-  siteTitle: 'For Martha ❤️',
+  siteTitle: 'For Martha',
   siteSubtitle: 'A little place filled with memories, music, and moments.',
-  marthaGreeting: 'Hi Martha ❤️',
+  marthaGreeting: 'Hi Martha',
   marthaSubtext: 'I made a little corner of the internet just for you.',
   surpriseTitle: 'One More Thing...',
   surpriseMessage: 'You make ordinary moments feel a little more special. I hope this little website makes you smile.',

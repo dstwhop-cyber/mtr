@@ -65,7 +65,7 @@ export const LoginModal: React.FC = () => {
               <Heart className="w-8 h-8 fill-current animate-pulse" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-serif font-bold tracking-tight text-stone-900 dark:text-stone-100">
-              {settings.siteTitle || 'For Martha ❤️'}
+              {settings.siteTitle || 'For Martha'}
             </h1>
             <p className="text-sm sm:text-base text-stone-600 dark:text-stone-400 font-light leading-relaxed max-w-sm mx-auto">
               {settings.siteSubtitle || 'A little place filled with memories, music, and moments.'}
