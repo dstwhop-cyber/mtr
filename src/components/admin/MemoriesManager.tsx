@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { MemoryItem, PhotoItem } from '../../types';
 import { DataService } from '../../services/dataService';
 import { useSettings } from '../../context/SettingsContext';
+import { ConfirmModal } from '../common/ConfirmModal';
 import {
   BookOpen,
   Plus,
@@ -14,6 +15,8 @@ import {
   AlertCircle,
   Loader2,
   Sparkles,
+  Link as LinkIcon,
+  X,
 } from 'lucide-react';
 
 interface MemoriesManagerProps {
@@ -34,17 +37,25 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [location, setLocation] = useState('');
-  const [tag, setTag] = useState('');
+  const [tag, setTag] = useState('Heartfelt');
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Delete modal state
+  const [memoryToDelete, setMemoryToDelete] = useState<MemoryItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setPhotoFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+      setError(null);
     }
   };
 
@@ -75,7 +86,7 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
         description: description.trim(),
         date: date || new Date().toISOString().split('T')[0],
         location: location.trim() || undefined,
-        tag: tag.trim() || undefined,
+        tag: tag.trim() || 'Heartfelt',
         photoUrl: finalPhotoUrl || undefined,
         isDemo: false,
       });
@@ -84,9 +95,10 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
       setTitle('');
       setDescription('');
       setLocation('');
-      setTag('');
+      setTag('Heartfelt');
       setPhotoUrl('');
       setPhotoFile(null);
+      setPhotoPreview(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       await onRefresh();
@@ -99,16 +111,21 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
     }
   };
 
-  const handleDeleteMemory = async (id: string) => {
-    if (window.confirm('Delete this memory card from the timeline?')) {
-      try {
-        await DataService.deleteMemory(id);
-        await onRefresh();
-      } catch (err) {
-        alert('Failed to delete memory.');
-      }
+  const confirmDelete = async () => {
+    if (!memoryToDelete) return;
+    setIsDeleting(true);
+    try {
+      await DataService.deleteMemory(memoryToDelete.id);
+      setMemoryToDelete(null);
+      await onRefresh();
+    } catch (err) {
+      console.error('Failed to delete memory', err);
+    } finally {
+      setIsDeleting(false);
     }
   };
+
+  const TAG_OPTIONS = ['Heartfelt', 'Funny', 'Adventure', 'Cozy', 'Milestone', 'Secret Joke'];
 
   return (
     <div className="space-y-8">
@@ -160,10 +177,10 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
               The Story / Personal Message
             </label>
             <textarea
+              rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Write the story, inside jokes, and why you remember this day..."
-              rows={4}
+              placeholder="Tell the story in your own words... what made this moment special with Martha?"
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed"
             />
           </div>
@@ -178,156 +195,197 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Pacific Coast Highway"
-                  className="w-full pl-9 pr-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="e.g. Downtown Coffee Shop, California"
+                  className="w-full pl-9 pr-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-                <MapPin className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <MapPin className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
-                Category Tag (Optional)
+                Memory Tag
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  placeholder="e.g. Funny, Adventure, Cozy"
-                  className="w-full pl-9 pr-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <Tag className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {TAG_OPTIONS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTag(t)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                      tag === t
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Attached Photo */}
-          <div>
-            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
-              Attach a Photo (Optional)
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 rounded-xl text-xs font-medium text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center gap-2"
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>{photoFile ? photoFile.name : 'Upload New Photo'}</span>
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handlePhotoSelect}
-                accept="image/*"
-                className="hidden"
-              />
+          {/* Photo Attachment (Optional) */}
+          <div className="p-4 bg-stone-50 dark:bg-stone-800/50 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-3">
+            <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+              <ImageIcon className="w-4 h-4 text-emerald-600" />
+              Accompanying Photo (Optional)
+            </span>
 
-              <span className="text-[11px] text-stone-400">or select from gallery:</span>
-              <select
-                value={photoUrl}
-                onChange={(e) => {
-                  setPhotoUrl(e.target.value);
-                  setPhotoFile(null);
-                }}
-                className="px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs text-stone-700 dark:text-stone-300 max-w-xs"
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border border-dashed border-stone-300 dark:border-stone-600 rounded-xl p-3 text-center cursor-pointer hover:border-emerald-500 transition"
               >
-                <option value="">-- No photo attached --</option>
-                {photos.map((p) => (
-                  <option key={p.id} value={p.url}>
-                    {p.caption ? p.caption.slice(0, 30) : p.album} ({p.date})
-                  </option>
-                ))}
-              </select>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handlePhotoSelect}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <p className="text-xs text-stone-600 dark:text-stone-300">
+                  {photoFile ? photoFile.name : 'Choose Photo File'}
+                </p>
+              </div>
+
+              <div>
+                <input
+                  type="url"
+                  value={photoUrl}
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                  placeholder="Or paste photo image URL..."
+                  className="w-full px-3 py-2 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
             </div>
+
+            {photoPreview && (
+              <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-stone-200 dark:border-stone-700">
+                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoFile(null);
+                    setPhotoPreview(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-rose-600 transition"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 flex items-center gap-2.5 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs flex items-center gap-2">
-              <Check className="w-4 h-4" />
-              <span>Story saved to timeline!</span>
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/60 flex items-center gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Story successfully added to Martha’s timeline!</span>
             </div>
           )}
 
           <button
             type="submit"
-            disabled={isSaving}
-            className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-medium text-sm shadow-md hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={isSaving || !title.trim() || !description.trim()}
+            className="w-full sm:w-auto px-7 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
           >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            <span>Add to Martha's Timeline</span>
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving Story...</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="w-4 h-4" />
+                <span>Add Memory Story</span>
+              </>
+            )}
           </button>
         </form>
       </div>
 
-      {/* Existing Memories List */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl p-6 sm:p-8 border border-stone-200/80 dark:border-stone-800 shadow-sm space-y-6">
-        <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100">
-          Timeline Memories ({memories.length})
-        </h3>
+      {/* Timeline Stories List & Management */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100">
+            Timeline Stories ({memories.length})
+          </h3>
+          <p className="text-xs text-stone-500">
+            Stories and special notes shown in Martha's journey timeline
+          </p>
+        </div>
 
         {memories.length === 0 ? (
-          <p className="text-xs text-stone-400 text-center py-8">No memories written yet.</p>
+          <div className="text-center py-16 px-4 bg-white dark:bg-stone-900 rounded-3xl border border-dashed border-stone-300 dark:border-stone-800">
+            <BookOpen className="w-12 h-12 text-stone-300 dark:text-stone-600 mx-auto mb-3" />
+            <p className="text-sm font-medium text-stone-700 dark:text-stone-300">
+              No memory stories written yet
+            </p>
+            <p className="text-xs text-stone-400 mt-1 max-w-sm mx-auto">
+              Write your first story above to populate Martha's memory journey timeline.
+            </p>
+          </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {memories.map((mem) => (
               <div
                 key={mem.id}
-                className="p-4 sm:p-5 rounded-2xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 flex flex-col sm:flex-row gap-4 justify-between"
+                className="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-stone-200/80 dark:border-stone-800 shadow-xs hover:shadow-md transition flex flex-col justify-between"
               >
-                <div className="space-y-2 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold uppercase tracking-wide">
+                      {mem.tag || 'Memory'}
+                    </span>
+                    <span className="text-[11px] text-stone-400 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-emerald-500" />
                       {mem.date}
                     </span>
-                    {mem.location && (
-                      <span className="flex items-center gap-1 text-stone-400">
-                        <MapPin className="w-3 h-3" />
-                        {mem.location}
-                      </span>
-                    )}
-                    {mem.tag && (
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-medium">
-                        #{mem.tag}
-                      </span>
-                    )}
-                    {mem.isDemo && (
-                      <span className="bg-amber-100 text-amber-800 text-[9px] font-mono px-1.5 py-0.5 rounded">
-                        DEMO
-                      </span>
-                    )}
                   </div>
 
-                  <h4 className="font-serif font-bold text-base text-stone-900 dark:text-stone-100">
+                  <h4 className="font-serif font-bold text-base text-stone-900 dark:text-stone-100 mb-1.5">
                     {mem.title}
                   </h4>
-                  <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300 whitespace-pre-line leading-relaxed">
+
+                  <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 line-clamp-3 leading-relaxed mb-3">
                     {mem.description}
                   </p>
+
+                  {mem.photoUrl && (
+                    <div className="relative h-28 rounded-xl overflow-hidden mb-3 border border-stone-200 dark:border-stone-800">
+                      <img
+                        src={mem.photoUrl}
+                        alt={mem.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {mem.photoUrl && (
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-stone-200 flex-shrink-0 self-start">
-                    <img src={mem.photoUrl} alt={mem.title} className="w-full h-full object-cover" />
-                  </div>
-                )}
+                <div className="flex items-center justify-between pt-3 border-t border-stone-100 dark:border-stone-800 text-xs">
+                  {mem.location ? (
+                    <span className="text-stone-400 text-[11px] flex items-center gap-1 truncate max-w-[60%]">
+                      <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      <span className="truncate">{mem.location}</span>
+                    </span>
+                  ) : (
+                    <span />
+                  )}
 
-                <div className="flex sm:flex-col justify-end items-end">
                   <button
-                    onClick={() => handleDeleteMemory(mem.id)}
-                    className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
-                    title="Delete Memory"
+                    onClick={() => setMemoryToDelete(mem)}
+                    className="text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400 flex items-center gap-1 ml-auto"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
@@ -335,6 +393,17 @@ export const MemoriesManager: React.FC<MemoriesManagerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!memoryToDelete}
+        title="Delete Memory Story?"
+        message={`Are you sure you want to remove "${memoryToDelete?.title || 'this memory'}" from Martha's timeline?`}
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Story'}
+        confirmVariant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setMemoryToDelete(null)}
+      />
     </div>
   );
 };

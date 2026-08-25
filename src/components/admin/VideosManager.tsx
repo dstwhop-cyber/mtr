@@ -3,6 +3,7 @@ import { VideoItem } from '../../types';
 import { DataService } from '../../services/dataService';
 import { useSettings } from '../../context/SettingsContext';
 import { VideoModal } from '../common/VideoModal';
+import { ConfirmModal } from '../common/ConfirmModal';
 import {
   Film,
   Upload,
@@ -13,6 +14,7 @@ import {
   Check,
   Loader2,
   Link as LinkIcon,
+  X,
 } from 'lucide-react';
 
 interface VideosManagerProps {
@@ -37,10 +39,15 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
   const [success, setSuccess] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<VideoItem | null>(null);
 
+  // Delete modal state
+  const [videoToDelete, setVideoToDelete] = useState<VideoItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setVideoFile(file);
+      setError(null);
       if (!title) {
         setTitle(file.name.replace(/\.[^/.]+$/, ''));
       }
@@ -50,15 +57,15 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (uploadMode === 'file' && !videoFile) {
-      setError('Please select a video file.');
+      setError('Please select a video file to upload.');
       return;
     }
     if (uploadMode === 'url' && !videoUrl.trim()) {
-      setError('Please provide a valid video URL.');
+      setError('Please enter a valid video link (MP4/WebM/Cloud URL).');
       return;
     }
     if (!title.trim()) {
-      setError('Please enter a video title.');
+      setError('Please enter a title for this video moment.');
       return;
     }
 
@@ -101,14 +108,17 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
     }
   };
 
-  const handleDeleteVideo = async (id: string) => {
-    if (window.confirm('Delete this video from Martha’s space?')) {
-      try {
-        await DataService.deleteVideo(id);
-        await onRefresh();
-      } catch (err) {
-        alert('Failed to delete video.');
-      }
+  const confirmDelete = async () => {
+    if (!videoToDelete) return;
+    setIsDeleting(true);
+    try {
+      await DataService.deleteVideo(videoToDelete.id);
+      setVideoToDelete(null);
+      await onRefresh();
+    } catch (err) {
+      console.error('Failed to delete video', err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -138,8 +148,8 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
               onClick={() => setUploadMode('file')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
                 uploadMode === 'file'
-                  ? 'bg-rose-500 text-white shadow-xs'
-                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
               Upload Video File
@@ -149,8 +159,8 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
               onClick={() => setUploadMode('url')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
                 uploadMode === 'url'
-                  ? 'bg-rose-500 text-white shadow-xs'
-                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
               Direct Video Link
@@ -171,19 +181,32 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
               />
               <Film className="w-8 h-8 text-rose-500 mx-auto mb-2 opacity-80" />
               {videoFile ? (
-                <p className="text-xs font-semibold text-rose-600">
-                  {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(2)} MB)
-                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(2)} MB)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVideoFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="p-1 rounded-full text-stone-400 hover:text-rose-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ) : (
                 <p className="text-xs text-stone-600 dark:text-stone-400">
-                  Click to select video (MP4, WebM, MOV)
+                  Click or drop video file (MP4, WebM, MOV)
                 </p>
               )}
             </div>
           ) : (
             <div>
               <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
-                Video URL (Direct MP4 / WebM / Cloud storage link)
+                Video URL (Direct MP4 / WebM / Cloud video link)
               </label>
               <div className="relative">
                 <input
@@ -207,7 +230,7 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Campfire by the Lake"
+                placeholder="e.g. Martha's Birthday Candle Wish"
                 className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
               />
             </div>
@@ -226,101 +249,139 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
 
           <div>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
-              Short Description / Memory Note
+              Short Description / Caption (Optional)
             </label>
             <textarea
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What made this moment special..."
-              rows={2}
-              className="w-full px-3.5 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              placeholder="What happened in this video? Add a personal note..."
+              className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
           </div>
 
+          {/* Upload Progress */}
           {isUploading && (
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-stone-500">
-                <span>Uploading video...</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-300 font-medium">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                  Uploading video clip...
+                </span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="w-full h-2 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
-                <div className="h-full bg-rose-500 transition-all duration-300 rounded-full" style={{ width: `${uploadProgress}%` }} />
+              <div className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-rose-500 transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
               </div>
             </div>
           )}
 
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 flex items-center gap-2.5 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs flex items-center gap-2">
-              <Check className="w-4 h-4" />
-              <span>Video successfully added!</span>
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/60 flex items-center gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Video successfully added to Martha’s collection!</span>
             </div>
           )}
 
           <button
             type="submit"
-            disabled={isUploading}
-            className="w-full py-3.5 rounded-xl bg-rose-600 text-white font-medium text-sm shadow-md hover:bg-rose-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={isUploading || (uploadMode === 'file' && !videoFile) || (uploadMode === 'url' && !videoUrl)}
+            className="w-full sm:w-auto px-7 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-medium text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
           >
-            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            <span>Save Video Moment</span>
+            {isUploading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Processing Video...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4" />
+                <span>Save Video Clip</span>
+              </>
+            )}
           </button>
         </form>
       </div>
 
-      {/* Videos List */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl p-6 sm:p-8 border border-stone-200/80 dark:border-stone-800 shadow-sm space-y-6">
-        <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100">
-          Saved Videos ({videos.length})
-        </h3>
+      {/* Video List & Management */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100">
+            Uploaded Videos ({videos.length})
+          </h3>
+          <p className="text-xs text-stone-500">
+            Play, preview, or remove video moments
+          </p>
+        </div>
 
         {videos.length === 0 ? (
-          <p className="text-xs text-stone-400 text-center py-8">No videos uploaded yet.</p>
+          <div className="text-center py-16 px-4 bg-white dark:bg-stone-900 rounded-3xl border border-dashed border-stone-300 dark:border-stone-800">
+            <Film className="w-12 h-12 text-stone-300 dark:text-stone-600 mx-auto mb-3" />
+            <p className="text-sm font-medium text-stone-700 dark:text-stone-300">
+              No videos uploaded yet
+            </p>
+            <p className="text-xs text-stone-400 mt-1 max-w-sm mx-auto">
+              Add your first video moment using the upload form above.
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {videos.map((vid) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {videos.map((video) => (
               <div
-                key={vid.id}
-                className="group relative bg-stone-50 dark:bg-stone-800 rounded-2xl overflow-hidden border border-stone-200 dark:border-stone-700 flex flex-col"
+                key={video.id}
+                className="group relative bg-white dark:bg-stone-900 rounded-2xl overflow-hidden border border-stone-200/80 dark:border-stone-800 shadow-xs hover:shadow-md transition flex flex-col"
               >
+                {/* Video thumbnail / player preview */}
                 <div
-                  className="aspect-video relative overflow-hidden bg-black cursor-pointer"
-                  onClick={() => setPreviewVideo(vid)}
+                  onClick={() => setPreviewVideo(video)}
+                  className="relative aspect-video bg-stone-950 cursor-pointer overflow-hidden"
                 >
-                  <video src={vid.url} className="w-full h-full object-cover opacity-80" preload="metadata" />
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:scale-110 transition duration-300">
-                    <div className="w-10 h-10 rounded-full bg-white/90 text-rose-600 flex items-center justify-center shadow-lg">
-                      <Play className="w-4 h-4 fill-current ml-0.5" />
+                  <video
+                    src={video.url}
+                    className="w-full h-full object-cover opacity-80"
+                    preload="metadata"
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/20 transition">
+                    <div className="w-10 h-10 rounded-full bg-white/90 text-rose-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
+                      <Play className="w-5 h-5 fill-current ml-0.5" />
                     </div>
                   </div>
-                  {vid.isDemo && (
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-rose-500 text-white text-[9px] font-mono font-bold">
-                      DEMO
-                    </span>
-                  )}
                 </div>
 
-                <div className="p-3 flex-1 flex flex-col justify-between">
+                {/* Video Info */}
+                <div className="p-4 flex-1 flex flex-col justify-between">
                   <div>
-                    <h4 className="font-serif font-bold text-sm text-stone-900 dark:text-stone-100 truncate">
-                      {vid.title}
+                    <h4 className="font-serif font-bold text-sm text-stone-900 dark:text-stone-100 line-clamp-1 mb-1">
+                      {video.title}
                     </h4>
-                    <p className="text-xs text-stone-500 line-clamp-1 mt-0.5">{vid.description}</p>
+                    {video.description && (
+                      <p className="text-xs text-stone-600 dark:text-stone-400 line-clamp-2 leading-relaxed mb-2">
+                        {video.description}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-stone-400 mt-3 pt-2 border-t border-stone-200/60 dark:border-stone-700">
-                    <span>{vid.date}</span>
+
+                  <div className="flex items-center justify-between text-[11px] text-stone-400 dark:text-stone-500 pt-2 border-t border-stone-100 dark:border-stone-800">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-rose-500" />
+                      {video.date || 'No date'}
+                    </span>
                     <button
-                      onClick={() => handleDeleteVideo(vid.id)}
-                      className="text-rose-500 hover:text-rose-700 p-1"
-                      title="Delete video"
+                      onClick={() => setVideoToDelete(video)}
+                      className="text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400 flex items-center gap-1"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </div>
@@ -330,10 +391,22 @@ export const VideosManager: React.FC<VideosManagerProps> = ({ videos, onRefresh 
         )}
       </div>
 
+      {/* Video Modal Preview */}
       <VideoModal
         video={previewVideo}
         isOpen={!!previewVideo}
         onClose={() => setPreviewVideo(null)}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!videoToDelete}
+        title="Delete Video?"
+        message={`Are you sure you want to remove "${videoToDelete?.title || 'this video'}" from Martha's space?`}
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Video'}
+        confirmVariant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setVideoToDelete(null)}
       />
     </div>
   );

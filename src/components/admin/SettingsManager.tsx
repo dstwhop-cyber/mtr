@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { DataService } from '../../services/dataService';
 import { ThemePreset, ParticleAnimationType } from '../../types';
 import { getFirebaseInstances } from '../../lib/firebase';
+import { ConfirmModal } from '../common/ConfirmModal';
 import {
   Settings,
   Palette,
@@ -73,6 +74,19 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
   // Backup state
   const [importJson, setImportJson] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // Confirmation modal state
+  const [confirmAction, setConfirmAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    action: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    action: async () => {},
+  });
 
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,20 +181,16 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
     }
   };
 
-  const handleResetDemoData = async () => {
-    if (window.confirm('Reset sample photos, videos, and memories back to default demo state?')) {
-      await DataService.resetToDemoData();
-      await onRefreshAll();
-      alert('Demo data restored.');
-    }
-  };
-
-  const handleClearDemoData = async () => {
-    if (window.confirm('Remove all demo placeholder items so you have a clean slate?')) {
-      await DataService.clearAllDemoData();
-      await onRefreshAll();
-      alert('All demo placeholder items removed.');
-    }
+  const promptClearDemoData = () => {
+    setConfirmAction({
+      isOpen: true,
+      title: 'Clear All Demo Data?',
+      message: 'This will purge all sample placeholder items from the database and local storage so you have a completely clean space.',
+      action: async () => {
+        await DataService.clearAllDemoData();
+        await onRefreshAll();
+      },
+    });
   };
 
   return (
@@ -222,7 +232,7 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
                         : 'border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800'
                     }`}
                   >
-                    <span className={`w-6 h-6 rounded-full ${theme.accentBg} flex-shrink-0 shadow-xs`} />
+                    <span className={`w-6 h-6 rounded-full ${theme.accentBg} shrink-0 shadow-xs`} />
                     <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
                       {theme.name}
                     </span>
@@ -502,25 +512,18 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="p-4 rounded-2xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700 space-y-3">
             <h4 className="font-bold text-xs text-stone-800 dark:text-stone-200">
-              Demo Sample Data
+              Clean Space Action
             </h4>
             <p className="text-xs text-stone-500">
-              You can clear all initial sample photos/videos/songs or restore them.
+              Ensure all demo placeholder items are completely removed from Firestore & browser cache.
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleClearDemoData}
+                onClick={promptClearDemoData}
                 className="px-3.5 py-2 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 text-xs font-medium hover:bg-rose-100 flex items-center gap-1.5 transition"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Clear Demo Items
-              </button>
-              <button
-                type="button"
-                onClick={handleResetDemoData}
-                className="px-3.5 py-2 rounded-xl bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-medium hover:bg-stone-300 flex items-center gap-1.5 transition"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Reset Demo
+                <Trash2 className="w-3.5 h-3.5" /> Purge Demo Items
               </button>
             </div>
           </div>
@@ -580,6 +583,18 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({ onRefreshAll }
           <span>Log out of Admin Dashboard</span>
         </button>
       </div>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        onConfirm={async () => {
+          await confirmAction.action();
+          setConfirmAction((prev) => ({ ...prev, isOpen: false }));
+        }}
+        onCancel={() => setConfirmAction((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

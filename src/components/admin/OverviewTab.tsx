@@ -36,12 +36,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 }) => {
   const { isConfigured } = getFirebaseInstances();
 
-  const demoPhotosCount = photos.filter((p) => p.isDemo).length;
-  const demoVideosCount = videos.filter((v) => v.isDemo).length;
-  const demoSongsCount = songs.filter((s) => s.isDemo).length;
-  const demoMemoriesCount = memories.filter((m) => m.isDemo).length;
-  const totalDemoItems = demoPhotosCount + demoVideosCount + demoSongsCount + demoMemoriesCount;
-
   return (
     <div className="space-y-8">
       {/* Welcome Banner */}
@@ -157,7 +151,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="space-y-3 text-xs sm:text-sm">
             <div className="flex items-center justify-between py-2 border-b border-stone-200/50 dark:border-stone-800">
               <span className="text-stone-500 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-stone-400" /> Last Updated Date
+                <Calendar className="w-4 h-4 text-stone-400" /> Last Updated
               </span>
               <span className="font-semibold text-stone-800 dark:text-stone-200">
                 {new Date(settings.lastUpdated || Date.now()).toLocaleString('en-US', {
@@ -191,9 +185,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
 
             <div className="flex items-center justify-between py-2">
-              <span className="text-stone-500">Demo Placeholder Items</span>
-              <span className="font-mono text-stone-700 dark:text-stone-300">
-                {totalDemoItems} demo item{totalDemoItems === 1 ? '' : 's'} loaded
+              <span className="text-stone-500">Space Status</span>
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                Clean Slate (Ready for your memories)
               </span>
             </div>
           </div>
@@ -202,7 +196,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         {/* Quick Actions Guide */}
         <div className="bg-white/40 dark:bg-stone-800/40 backdrop-blur-xl rounded-2xl p-6 border border-white/70 dark:border-stone-700 shadow-sm space-y-4">
           <h3 className="font-serif font-bold text-stone-900 dark:text-stone-100 text-lg">
-            Quick Actions
+            Quick Uploads
           </h3>
 
           <div className="grid grid-cols-2 gap-3">
@@ -240,7 +234,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
 
           <p className="text-[11px] text-stone-400">
-            Tip: Go to the <strong>Settings</strong> tab to change Martha's password, customize the theme color, or edit the surprise note.
+            Tip: Go to the <strong>Settings</strong> tab to customize Martha's password, theme colors, or the surprise note.
           </p>
         </div>
       </div>

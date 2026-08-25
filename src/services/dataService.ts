@@ -60,6 +60,11 @@ export class DataService {
     }
   }
 
+  // Filter out any leftover demo items
+  private static filterOutDemos<T extends { isDemo?: boolean; id?: string }>(items: T[]): T[] {
+    return items.filter((item) => !item.isDemo && !item.id?.startsWith('demo-'));
+  }
+
   // --- SETTINGS & CONFIG ---
   static async getSettings(): Promise<AppSettings> {
     const { db, isConfigured } = getFirebaseInstances();
@@ -70,7 +75,7 @@ export class DataService {
           return { ...DEFAULT_SETTINGS, ...docSnap.data() } as AppSettings;
         }
       } catch (err) {
-        console.warn('Firestore settings fetch error, using local/cached:', err);
+        console.warn('Firestore settings fetch notice, using local/cached:', err);
       }
     }
 
@@ -99,7 +104,7 @@ export class DataService {
       try {
         await setDoc(doc(db, 'settings', 'global'), updated, { merge: true });
       } catch (err) {
-        console.error('Firestore settings save error:', err);
+        console.warn('Firestore settings save notice:', err);
       }
     }
 
@@ -114,26 +119,39 @@ export class DataService {
       try {
         const querySnapshot = await getDocs(collection(db, 'photos'));
         const list: PhotoItem[] = [];
-        querySnapshot.forEach((doc) => list.push({ ...doc.data(), id: doc.id } as PhotoItem));
+        querySnapshot.forEach((d) => {
+          const data = d.data() as PhotoItem;
+          if (!data.isDemo && !d.id.startsWith('demo-')) {
+            list.push({ ...data, id: d.id });
+          }
+        });
         if (list.length > 0) {
-          list.sort((a, b) => b.createdAt - a.createdAt);
+          list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          this.setLocalItem(LS_PHOTOS, list);
           return list;
         }
       } catch (err) {
-        console.warn('Firestore photos fetch error, falling back to local:', err);
+        console.warn('Firestore photos fetch notice, falling back to local:', err);
       }
     }
 
-    const photos = await this.getLocalItem<PhotoItem[]>(LS_PHOTOS, INITIAL_PHOTOS);
+    const stored = await this.getLocalItem<PhotoItem[]>(LS_PHOTOS, INITIAL_PHOTOS);
+    const cleaned = this.filterOutDemos(stored);
+    
     // Refresh any IndexedDB blob URLs if needed
-    for (const photo of photos) {
-      if (photo.url.startsWith('indexeddb://')) {
+    for (const photo of cleaned) {
+      if (photo.url && photo.url.startsWith('indexeddb://')) {
         const id = photo.url.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) photo.url = blobUrl;
       }
     }
-    return photos;
+    
+    if (cleaned.length !== stored.length) {
+      this.setLocalItem(LS_PHOTOS, cleaned);
+    }
+    
+    return cleaned.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   static async addPhoto(photo: Omit<PhotoItem, 'id' | 'createdAt'>): Promise<PhotoItem> {
@@ -141,6 +159,7 @@ export class DataService {
     const newPhoto: PhotoItem = {
       ...photo,
       id,
+      isDemo: false,
       createdAt: Date.now(),
     };
 
@@ -149,12 +168,13 @@ export class DataService {
       try {
         await setDoc(doc(db, 'photos', id), newPhoto);
       } catch (err) {
-        console.error('Firestore save photo error:', err);
+        console.warn('Firestore save photo notice:', err);
       }
     }
 
     const current = await this.getLocalItem<PhotoItem[]>(LS_PHOTOS, INITIAL_PHOTOS);
-    const updated = [newPhoto, ...current];
+    const cleaned = this.filterOutDemos(current);
+    const updated = [newPhoto, ...cleaned];
     this.setLocalItem(LS_PHOTOS, updated);
     await this.touchUpdated();
     return newPhoto;
@@ -166,7 +186,7 @@ export class DataService {
       try {
         await updateDoc(doc(db, 'photos', id), updates);
       } catch (err) {
-        console.error('Firestore update photo error:', err);
+        console.warn('Firestore update photo notice:', err);
       }
     }
 
@@ -176,17 +196,21 @@ export class DataService {
     await this.touchUpdated();
   }
 
-  static async deletePhoto(id: string): Promise<void> {
+  static async deletePhoto(id: string): Promise<boolean> {
     const { db, storage, isConfigured } = getFirebaseInstances();
     if (isConfigured && db) {
       try {
         await deleteDoc(doc(db, 'photos', id));
-        if (storage) {
+      } catch (err) {
+        console.warn('Firestore delete photo notice:', err);
+      }
+      if (storage) {
+        try {
           const fileRef = ref(storage, `photos/${id}`);
           await deleteObject(fileRef).catch(() => {});
+        } catch {
+          // Ignore storage cleanup error
         }
-      } catch (err) {
-        console.error('Firestore delete photo error:', err);
       }
     }
 
@@ -195,6 +219,7 @@ export class DataService {
     const updated = current.filter((item) => item.id !== id);
     this.setLocalItem(LS_PHOTOS, updated);
     await this.touchUpdated();
+    return true;
   }
 
   // --- VIDEOS ---
@@ -204,25 +229,35 @@ export class DataService {
       try {
         const querySnapshot = await getDocs(collection(db, 'videos'));
         const list: VideoItem[] = [];
-        querySnapshot.forEach((doc) => list.push({ ...doc.data(), id: doc.id } as VideoItem));
+        querySnapshot.forEach((d) => {
+          const data = d.data() as VideoItem;
+          if (!data.isDemo && !d.id.startsWith('demo-')) {
+            list.push({ ...data, id: d.id });
+          }
+        });
         if (list.length > 0) {
-          list.sort((a, b) => b.createdAt - a.createdAt);
+          list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          this.setLocalItem(LS_VIDEOS, list);
           return list;
         }
       } catch (err) {
-        console.warn('Firestore videos fetch error:', err);
+        console.warn('Firestore videos fetch notice:', err);
       }
     }
 
-    const videos = await this.getLocalItem<VideoItem[]>(LS_VIDEOS, INITIAL_VIDEOS);
-    for (const vid of videos) {
-      if (vid.url.startsWith('indexeddb://')) {
+    const stored = await this.getLocalItem<VideoItem[]>(LS_VIDEOS, INITIAL_VIDEOS);
+    const cleaned = this.filterOutDemos(stored);
+    for (const vid of cleaned) {
+      if (vid.url && vid.url.startsWith('indexeddb://')) {
         const id = vid.url.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) vid.url = blobUrl;
       }
     }
-    return videos;
+    if (cleaned.length !== stored.length) {
+      this.setLocalItem(LS_VIDEOS, cleaned);
+    }
+    return cleaned.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   static async addVideo(video: Omit<VideoItem, 'id' | 'createdAt'>): Promise<VideoItem> {
@@ -230,6 +265,7 @@ export class DataService {
     const newVideo: VideoItem = {
       ...video,
       id,
+      isDemo: false,
       createdAt: Date.now(),
     };
 
@@ -238,24 +274,25 @@ export class DataService {
       try {
         await setDoc(doc(db, 'videos', id), newVideo);
       } catch (err) {
-        console.error('Firestore add video error:', err);
+        console.warn('Firestore add video notice:', err);
       }
     }
 
     const current = await this.getLocalItem<VideoItem[]>(LS_VIDEOS, INITIAL_VIDEOS);
-    const updated = [newVideo, ...current];
+    const cleaned = this.filterOutDemos(current);
+    const updated = [newVideo, ...cleaned];
     this.setLocalItem(LS_VIDEOS, updated);
     await this.touchUpdated();
     return newVideo;
   }
 
-  static async deleteVideo(id: string): Promise<void> {
+  static async deleteVideo(id: string): Promise<boolean> {
     const { db, isConfigured } = getFirebaseInstances();
     if (isConfigured && db) {
       try {
         await deleteDoc(doc(db, 'videos', id));
       } catch (err) {
-        console.error('Firestore delete video error:', err);
+        console.warn('Firestore delete video notice:', err);
       }
     }
 
@@ -264,6 +301,7 @@ export class DataService {
     const updated = current.filter((item) => item.id !== id);
     this.setLocalItem(LS_VIDEOS, updated);
     await this.touchUpdated();
+    return true;
   }
 
   // --- SONGS / MUSIC ---
@@ -273,34 +311,46 @@ export class DataService {
       try {
         const querySnapshot = await getDocs(collection(db, 'songs'));
         const list: SongItem[] = [];
-        querySnapshot.forEach((doc) => list.push({ ...doc.data(), id: doc.id } as SongItem));
+        querySnapshot.forEach((d) => {
+          const data = d.data() as SongItem;
+          if (!data.isDemo && !d.id.startsWith('demo-')) {
+            list.push({ ...data, id: d.id });
+          }
+        });
         if (list.length > 0) {
-          list.sort((a, b) => a.order - b.order);
+          list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          this.setLocalItem(LS_SONGS, list);
           return list;
         }
       } catch (err) {
-        console.warn('Firestore songs fetch error:', err);
+        console.warn('Firestore songs fetch notice:', err);
       }
     }
 
-    const songs = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
-    for (const song of songs) {
-      if (song.url.startsWith('indexeddb://')) {
+    const stored = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
+    const cleaned = this.filterOutDemos(stored);
+    for (const song of cleaned) {
+      if (song.url && song.url.startsWith('indexeddb://')) {
         const id = song.url.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) song.url = blobUrl;
       }
     }
-    return songs;
+    if (cleaned.length !== stored.length) {
+      this.setLocalItem(LS_SONGS, cleaned);
+    }
+    return cleaned.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
   static async addSong(song: Omit<SongItem, 'id' | 'createdAt'>): Promise<SongItem> {
     const id = 'song_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const current = await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS);
+    const cleaned = this.filterOutDemos(current);
     const newSong: SongItem = {
       ...song,
       id,
-      order: song.order ?? current.length,
+      order: song.order ?? cleaned.length,
+      isDemo: false,
       createdAt: Date.now(),
     };
 
@@ -309,11 +359,11 @@ export class DataService {
       try {
         await setDoc(doc(db, 'songs', id), newSong);
       } catch (err) {
-        console.error('Firestore add song error:', err);
+        console.warn('Firestore add song notice:', err);
       }
     }
 
-    const updated = [...current, newSong];
+    const updated = [...cleaned, newSong];
     this.setLocalItem(LS_SONGS, updated);
     await this.touchUpdated();
     return newSong;
@@ -325,7 +375,7 @@ export class DataService {
       try {
         await updateDoc(doc(db, 'songs', id), updates);
       } catch (err) {
-        console.error('Firestore update song error:', err);
+        console.warn('Firestore update song notice:', err);
       }
     }
 
@@ -335,13 +385,13 @@ export class DataService {
     await this.touchUpdated();
   }
 
-  static async deleteSong(id: string): Promise<void> {
+  static async deleteSong(id: string): Promise<boolean> {
     const { db, isConfigured } = getFirebaseInstances();
     if (isConfigured && db) {
       try {
         await deleteDoc(doc(db, 'songs', id));
       } catch (err) {
-        console.error('Firestore delete song error:', err);
+        console.warn('Firestore delete song notice:', err);
       }
     }
 
@@ -350,6 +400,7 @@ export class DataService {
     const updated = current.filter((s) => s.id !== id);
     this.setLocalItem(LS_SONGS, updated);
     await this.touchUpdated();
+    return true;
   }
 
   // --- MEMORIES / TIMELINE ---
@@ -359,25 +410,35 @@ export class DataService {
       try {
         const querySnapshot = await getDocs(collection(db, 'memories'));
         const list: MemoryItem[] = [];
-        querySnapshot.forEach((doc) => list.push({ ...doc.data(), id: doc.id } as MemoryItem));
+        querySnapshot.forEach((d) => {
+          const data = d.data() as MemoryItem;
+          if (!data.isDemo && !d.id.startsWith('demo-')) {
+            list.push({ ...data, id: d.id });
+          }
+        });
         if (list.length > 0) {
           list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          this.setLocalItem(LS_MEMORIES, list);
           return list;
         }
       } catch (err) {
-        console.warn('Firestore memories fetch error:', err);
+        console.warn('Firestore memories fetch notice:', err);
       }
     }
 
-    const memories = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
-    for (const mem of memories) {
+    const stored = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
+    const cleaned = this.filterOutDemos(stored);
+    for (const mem of cleaned) {
       if (mem.photoUrl && mem.photoUrl.startsWith('indexeddb://')) {
         const id = mem.photoUrl.replace('indexeddb://', '');
         const blobUrl = await getMediaBlobUrl(id);
         if (blobUrl) mem.photoUrl = blobUrl;
       }
     }
-    return memories.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (cleaned.length !== stored.length) {
+      this.setLocalItem(LS_MEMORIES, cleaned);
+    }
+    return cleaned.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   static async addMemory(memory: Omit<MemoryItem, 'id' | 'createdAt'>): Promise<MemoryItem> {
@@ -385,6 +446,7 @@ export class DataService {
     const newMemory: MemoryItem = {
       ...memory,
       id,
+      isDemo: false,
       createdAt: Date.now(),
     };
 
@@ -393,12 +455,13 @@ export class DataService {
       try {
         await setDoc(doc(db, 'memories', id), newMemory);
       } catch (err) {
-        console.error('Firestore add memory error:', err);
+        console.warn('Firestore add memory notice:', err);
       }
     }
 
     const current = await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES);
-    const updated = [newMemory, ...current];
+    const cleaned = this.filterOutDemos(current);
+    const updated = [newMemory, ...cleaned];
     this.setLocalItem(LS_MEMORIES, updated);
     await this.touchUpdated();
     return newMemory;
@@ -410,7 +473,7 @@ export class DataService {
       try {
         await updateDoc(doc(db, 'memories', id), updates);
       } catch (err) {
-        console.error('Firestore update memory error:', err);
+        console.warn('Firestore update memory notice:', err);
       }
     }
 
@@ -420,13 +483,13 @@ export class DataService {
     await this.touchUpdated();
   }
 
-  static async deleteMemory(id: string): Promise<void> {
+  static async deleteMemory(id: string): Promise<boolean> {
     const { db, isConfigured } = getFirebaseInstances();
     if (isConfigured && db) {
       try {
         await deleteDoc(doc(db, 'memories', id));
       } catch (err) {
-        console.error('Firestore delete memory error:', err);
+        console.warn('Firestore delete memory notice:', err);
       }
     }
 
@@ -434,6 +497,7 @@ export class DataService {
     const updated = current.filter((m) => m.id !== id);
     this.setLocalItem(LS_MEMORIES, updated);
     await this.touchUpdated();
+    return true;
   }
 
   // --- ALBUMS ---
@@ -443,10 +507,10 @@ export class DataService {
       try {
         const querySnapshot = await getDocs(collection(db, 'albums'));
         const list: AlbumItem[] = [];
-        querySnapshot.forEach((doc) => list.push({ ...doc.data(), id: doc.id } as AlbumItem));
+        querySnapshot.forEach((d) => list.push({ ...d.data(), id: d.id } as AlbumItem));
         if (list.length > 0) return list;
       } catch (err) {
-        console.warn('Firestore albums fetch error:', err);
+        console.warn('Firestore albums fetch notice:', err);
       }
     }
     return this.getLocalItem<AlbumItem[]>(LS_ALBUMS, INITIAL_ALBUMS);
@@ -461,12 +525,12 @@ export class DataService {
           await setDoc(doc(db, 'albums', alb.id), alb, { merge: true });
         }
       } catch (err) {
-        console.error('Firestore save albums error:', err);
+        console.warn('Firestore save albums notice:', err);
       }
     }
   }
 
-  // --- FILE UPLOAD (Supports Firebase Storage & IndexedDB) ---
+  // --- FILE UPLOAD (Supports Firebase Storage with seamless IndexedDB Fallback) ---
   static async uploadMedia(
     file: File,
     type: 'image' | 'video' | 'audio',
@@ -476,36 +540,47 @@ export class DataService {
     const { storage, isConfigured } = getFirebaseInstances();
 
     if (isConfigured && storage) {
-      return new Promise((resolve, reject) => {
-        const folder = type === 'image' ? 'photos' : type === 'video' ? 'videos' : 'audio';
-        const storageRef = ref(storage, `${folder}/${mediaId}_${file.name}`);
-        const uploadTask = uploadBytesResumable(storageRef, file);
+      try {
+        return await new Promise((resolve, reject) => {
+          const folder = type === 'image' ? 'photos' : type === 'video' ? 'videos' : 'audio';
+          const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const storageRef = ref(storage, `${folder}/${mediaId}_${cleanFileName}`);
+          const uploadTask = uploadBytesResumable(storageRef, file);
 
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            if (onProgress) onProgress(Math.round(progress));
-          },
-          (error) => {
-            console.error('Firebase Storage upload error:', error);
-            reject(error);
-          },
-          async () => {
-            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            if (onProgress) onProgress(100);
-            resolve({ url: downloadUrl, id: mediaId });
-          }
-        );
-      });
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              if (snapshot.totalBytes > 0) {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                if (onProgress) onProgress(Math.round(progress));
+              }
+            },
+            (error) => {
+              console.warn('Firebase Storage upload error, falling back to persistent local storage:', error);
+              reject(error);
+            },
+            async () => {
+              try {
+                const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                if (onProgress) onProgress(100);
+                resolve({ url: downloadUrl, id: mediaId });
+              } catch (urlErr) {
+                reject(urlErr);
+              }
+            }
+          );
+        });
+      } catch (err) {
+        console.warn('Using IndexedDB fallback for media storage due to Firebase Storage exception:', err);
+      }
     }
 
-    // Local IndexedDB Mode with simulated smooth progress
+    // Local IndexedDB Mode with simulated smooth progress feedback
     let progress = 0;
     const interval = setInterval(() => {
       progress = Math.min(progress + 25, 90);
       if (onProgress) onProgress(progress);
-    }, 60);
+    }, 50);
 
     const objectUrl = await saveMediaBlob(mediaId, file, type, file.name);
     clearInterval(interval);
@@ -514,26 +589,39 @@ export class DataService {
     return { url: objectUrl, id: mediaId };
   }
 
-  // --- DEMO RESET & BULK OPERATIONS ---
-  static async resetToDemoData(): Promise<void> {
-    this.setLocalItem(LS_PHOTOS, INITIAL_PHOTOS);
-    this.setLocalItem(LS_VIDEOS, INITIAL_VIDEOS);
-    this.setLocalItem(LS_SONGS, INITIAL_SONGS);
-    this.setLocalItem(LS_MEMORIES, INITIAL_MEMORIES);
-    this.setLocalItem(LS_ALBUMS, INITIAL_ALBUMS);
-    await this.touchUpdated();
-  }
-
+  // --- DEMO PURGE & BULK OPERATIONS ---
   static async clearAllDemoData(): Promise<void> {
-    const photos = (await this.getLocalItem<PhotoItem[]>(LS_PHOTOS, INITIAL_PHOTOS)).filter((p) => !p.isDemo);
-    const videos = (await this.getLocalItem<VideoItem[]>(LS_VIDEOS, INITIAL_VIDEOS)).filter((v) => !v.isDemo);
-    const songs = (await this.getLocalItem<SongItem[]>(LS_SONGS, INITIAL_SONGS)).filter((s) => !s.isDemo);
-    const memories = (await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, INITIAL_MEMORIES)).filter((m) => !m.isDemo);
+    const photos = this.filterOutDemos(await this.getLocalItem<PhotoItem[]>(LS_PHOTOS, []));
+    const videos = this.filterOutDemos(await this.getLocalItem<VideoItem[]>(LS_VIDEOS, []));
+    const songs = this.filterOutDemos(await this.getLocalItem<SongItem[]>(LS_SONGS, []));
+    const memories = this.filterOutDemos(await this.getLocalItem<MemoryItem[]>(LS_MEMORIES, []));
 
     this.setLocalItem(LS_PHOTOS, photos);
     this.setLocalItem(LS_VIDEOS, videos);
     this.setLocalItem(LS_SONGS, songs);
     this.setLocalItem(LS_MEMORIES, memories);
+
+    // Also purge demo docs from Firestore if configured
+    const { db, isConfigured } = getFirebaseInstances();
+    if (isConfigured && db) {
+      try {
+        const demoIds = [
+          'demo-photo-1', 'demo-photo-2', 'demo-photo-3', 'demo-photo-4', 'demo-photo-5', 'demo-photo-6',
+          'demo-video-1', 'demo-video-2',
+          'demo-song-1', 'demo-song-2', 'demo-song-3',
+          'demo-memory-1', 'demo-memory-2', 'demo-memory-3', 'demo-memory-4'
+        ];
+        for (const id of demoIds) {
+          await deleteDoc(doc(db, 'photos', id)).catch(() => {});
+          await deleteDoc(doc(db, 'videos', id)).catch(() => {});
+          await deleteDoc(doc(db, 'songs', id)).catch(() => {});
+          await deleteDoc(doc(db, 'memories', id)).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Firestore demo cleanup notice:', err);
+      }
+    }
+
     await this.touchUpdated();
   }
 
