@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'owner' ||
+        request.auth.token.email == 'dstwhop@gmail.com'
+      );
+    }
+
+    // Public readable metadata for Martha & guests (photos, videos, songs, memories, albums, settings)
+    match /photos/{photoId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /videos/{videoId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /songs/{songId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /memories/{memoryId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /albums/{albumId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+  }
+}

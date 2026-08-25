@@ -1,0 +1,6 @@
+{
+  "name": "For Martha - Private Digital Memory Space",
+  "description": "A warm, personal digital memory scrapbook, photo gallery, video archive, and music space created for Martha.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
